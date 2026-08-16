@@ -29,6 +29,7 @@ includes many ADPCM codecs and the [SSRC](https://github.com/shibatch/SSRC) samp
 | sampled | [YM2068 ADPCM](src/main/java/vavi/sound/adpcm/ym2608)                   | YAMAHA ADPCM-A            |       ✅       |       ✅        |        -         | YM2608 etc.                                 |
 | sampled | [YAMAHA ADPCM](src/main/java/vavi/sound/adpcm/yamaha)                   | YAMAHA ADPCM-A            |       ✅       |       ✅        | ✅ <sup>[2]</sup> | same as YM2608 ADPCM                        |
 | sampled | [PSX ADPCM](src/main/java/vavi/sound/adpcm/psx)                         | SONY ADPCM                |       ✅       |       -        |        ✅         | .mi\[bh], .mic                              |
+| sampled | [SShd](src/main/java/vavi/sound/adpcm/sshd)                             | SONY Audio Stream (ADS)   |       ✅       |       -        |        ✅         | .ads, .ss2, psx/pcm16/ima                   |
 | sampled | [ssrc](src/main/java/vavi/sound/pcm/resampling/ssrc)                    | resampling                |       ✅       |       -        |  ✅ <su>*</sup>   | [*] need to wait for phase 1                |
 
 <sub>\[1] implemented in another library</sub><br/>
@@ -110,6 +111,7 @@ A. yes you can, follow those steps
   * midi -> smaf
   * ~~https://github.com/but80/smaf825 (patch dump)~~ -> https://github.com/umjammer/vavi-sound-ma
   * ~~psx adpcm spi~~
+  * ~~sshd (.ss2) spi~~
   * ~~adpcm playback timing precisely~~
 
 ---

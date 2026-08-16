@@ -14,6 +14,7 @@ vavi.sound.sampled.adpcm.ms.MsFormatConversionProvider
 vavi.sound.sampled.adpcm.oki.OkiFormatConversionProvider
 vavi.sound.sampled.adpcm.psx.PsxFormatConversionProvider
 vavi.sound.sampled.adpcm.rohm.RohmFormatConversionProvider
+vavi.sound.sampled.adpcm.sshd.SshdFormatConversionProvider
 vavi.sound.sampled.adpcm.vox.VoxFormatConversionProvider
 vavi.sound.sampled.adpcm.yamaha.YamahaFormatConversionProvider
 vavi.sound.sampled.ssrc.SSRCSampleRateConversionProvider
