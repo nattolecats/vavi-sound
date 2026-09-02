@@ -318,7 +318,14 @@ logger.log(Level.DEBUG, "resolution: " + resolution);
                 MfiEvent mfiEvent = mfiTrack.get(j);
                 MfiMessage mfiMessage = mfiEvent.getMessage();
 
-                midiContext.addCurrent(mfiMessage.getDelta());
+                // Header subchunks and adat chunks are prepended to track 0
+                // solely to transport their metadata into the MIDI bridge.
+                // Their first byte is payload, not a delta-time.  Counting
+                // it here delays loading audio data until after AudioPlay
+                // messages have already been dispatched.
+                if (!(mfiMessage instanceof SubMessage || mfiMessage instanceof AudioDataMessage)) {
+                    midiContext.addCurrent(mfiMessage.getDelta());
+                }
 
                 if (mfiMessage instanceof MidiConvertible) {
 //logger.log(Level.TRACE, "midi convertible: " + message);

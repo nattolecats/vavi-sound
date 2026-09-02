@@ -14,9 +14,24 @@
       <useProjectArtifact>true</useProjectArtifact>
       <unpack>true</unpack>
       <scope>test</scope>
+      <!-- ServiceLoader descriptors are text files, not replaceable resources.
+           Keep the project's merged descriptors below instead of letting the
+           last unpacked dependency silently replace them. -->
+      <unpackOptions>
+        <excludes>
+          <exclude>META-INF/services/**</exclude>
+        </excludes>
+      </unpackOptions>
     </dependencySet>
   </dependencySets>
   <fileSets>
+    <fileSet>
+      <directory>${project.build.outputDirectory}</directory>
+      <outputDirectory>/</outputDirectory>
+      <includes>
+        <include>META-INF/services/**</include>
+      </includes>
+    </fileSet>
     <fileSet>
       <directory>${project.build.directory}/test-classes</directory>
       <outputDirectory>/</outputDirectory>
