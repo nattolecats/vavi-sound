@@ -35,7 +35,7 @@ public final class FaithType4Renderer {
      * render.  A negative value here intentionally adds delay; zero leaves only
      * the small (10 ms by default) audio-line startup buffer.
      */
-    private static final String FAITH_ADPCM_LATENCY = "0";
+    private static final String FAITH_ADPCM_LATENCY = "-35";
 
     private FaithType4Renderer() {
     }
