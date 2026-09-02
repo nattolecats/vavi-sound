@@ -43,6 +43,14 @@ public class FuetrekAudioEngine extends BasicAudioEngine {
     private static final int MAX_ID = 16;
 
     /**
+     * The roughness comparison is not statistically useful for very short
+     * clips.  In particular, a short 2-bit G.723 resource can look smoother
+     * when decoded as 4-bit G.721 simply because there are too few samples.
+     * Keep the format-defined G.723 choice for those clips.
+     */
+    private static final int MIN_AUTO_SAMPLES = 256;
+
+    /**
      * <pre>
      *  (c: continued, e: end)
      *  from Function131, Function134
@@ -181,7 +189,13 @@ logger.log(Level.DEBUG, "always used: no: " + streamNumber + ", ch: " + data[str
     private static String configured2BitDecoder(int streamNumber) {
         String decoder = System.getProperty("vavi.sound.mobile.FuetrekAudioEngine.g723Decoder." + streamNumber);
         if (decoder == null) {
-            decoder = System.getProperty("vavi.sound.mobile.FuetrekAudioEngine.g723Decoder", "auto");
+            // MFi Type-2's 2-bit ADPCM is the CCITT G.723 format.  Header
+            // metadata does not contain a codec tag, so statistical guessing
+            // is unsafe (and misclassifies long resources such as Track 5 of
+            // WALKURENRITT).  Keep the format-defined decoder by default;
+            // callers can still opt into the experimental heuristic with
+            // -Dvavi.sound.mobile.FuetrekAudioEngine.g723Decoder=auto.
+            decoder = System.getProperty("vavi.sound.mobile.FuetrekAudioEngine.g723Decoder", "g723");
         }
         return decoder.toLowerCase(Locale.ROOT);
     }
@@ -193,6 +207,11 @@ logger.log(Level.DEBUG, "always used: no: " + streamNumber + ", ch: " + data[str
                                                        ByteOrder.LITTLE_ENDIAN));
         byte[] g721 = decodeAll(new G721InputStream(new ByteArrayInputStream(compressed),
                                                      ByteOrder.LITTLE_ENDIAN));
+        if (g723.length / 2 < MIN_AUTO_SAMPLES) {
+            logger.log(Level.DEBUG, "Type-2 ADPCM: short stream ({0} samples), retaining G.723",
+                       g723.length / 2);
+            return "g723";
+        }
         double g723Score = roughness(g723);
         double g721Score = roughness(g721);
         if (g721Score + 0.12 < g723Score) {

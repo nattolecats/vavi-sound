@@ -234,9 +234,18 @@ logger.log(Level.DEBUG, subMessage);
     private static final ServiceLoader<SubMessage> subMessages = ServiceLoader.load(SubMessage.class);
 
     public static SubMessage factory(String subType) {
-        for (SubMessage subMessage : subMessages) {
-            if (subMessage.accept(subType)) {
-                return subMessage;
+        for (SubMessage prototype : subMessages) {
+            if (prototype.accept(subType)) {
+                // ServiceLoader caches provider instances.  SubMessage holds
+                // the parsed payload, so returning that cached instance makes
+                // every chunk share the last chunk's data (e.g. all ADPM
+                // entries become the final 2-bit header).  Create a fresh
+                // provider instance for every parsed subchunk.
+                try {
+                    return prototype.getClass().getDeclaredConstructor().newInstance();
+                } catch (ReflectiveOperationException e) {
+                    throw new IllegalStateException("cannot instantiate sub chunk: " + prototype.getClass(), e);
+                }
             }
         }
 logger.log(Level.WARNING, "no matched sub chunk: " + subType);

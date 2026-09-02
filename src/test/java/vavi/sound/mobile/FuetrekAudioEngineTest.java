@@ -50,6 +50,32 @@ class FuetrekAudioEngineTest {
         }
     }
 
+    @Test
+    void type2DefaultsToFormatDefinedG723() {
+        String previous = System.getProperty("vavi.sound.mobile.FuetrekAudioEngine.g723Decoder");
+        try {
+            System.clearProperty("vavi.sound.mobile.FuetrekAudioEngine.g723Decoder");
+            FuetrekAudioEngine engine = new FuetrekAudioEngine();
+            // A 2-bit MFi Type-2 stream has no codec tag in its header.  The
+            // format-defined G.723 decoder must be used unless auto detection
+            // is explicitly requested.
+            byte[] adpcm = {
+                0x02, 0x01, 0x54, 0x55, 0x04, 0x10, 0x00, 0x10,
+                0x00, 0x40, 0x00, 0x00, 0x04, 0x03, (byte) 0xc4, (byte) 0xc0,
+                0x31, 0x0c, 0x00, 0x03, 0x03, (byte) 0xcc, (byte) 0xf3, (byte) 0xff,
+                (byte) 0xff, (byte) 0xcb, (byte) 0xff, (byte) 0xf2, (byte) 0xbf, (byte) 0xfc,
+                (byte) 0xbf, (byte) 0xfc
+            };
+            assertEquals("g723", engine.getDecoderName(5, 2, adpcm));
+        } finally {
+            if (previous == null) {
+                System.clearProperty("vavi.sound.mobile.FuetrekAudioEngine.g723Decoder");
+            } else {
+                System.setProperty("vavi.sound.mobile.FuetrekAudioEngine.g723Decoder", previous);
+            }
+        }
+    }
+
     private static AudioEngine.Data audioData(int rate, int bits) {
         AudioEngine.Data result = new AudioEngine.Data();
         result.channel = -1;

@@ -87,9 +87,11 @@ Type 4-compatible DLL may be selected by assigning its path to
 with this project; Faith's authoring tool must be installed separately before
 using this option.
 
-MFi Type-2's 2-bit header does not identify the codec.  The default `auto`
-profile compares the IMA2-compatible path with G.723/G.721 candidates; for
-diagnostics, `-Dvavi.sound.mobile.FuetrekAudioEngine.g723Decoder=ima2` or
+MFi Type-2's 2-bit header does not identify the codec.  The format-defined
+G.723 decoder is used by default.  An experimental `auto` profile is
+available for legacy resources that need statistical G.721 fallback; enable
+it explicitly with `-Dvavi.sound.mobile.FuetrekAudioEngine.g723Decoder=auto`.
+For diagnostics, `-Dvavi.sound.mobile.FuetrekAudioEngine.g723Decoder=ima2` or
 `g723` forces one decoder globally.  A stream-specific override can be used
 to isolate mixed resources, for example
 `-Dvavi.sound.mobile.FuetrekAudioEngine.g723Decoder.3=ima2` and

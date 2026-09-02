@@ -60,10 +60,11 @@ with `vavi.sound.mobile.FuetrekAudioEngine.g723BitOrder.*` as `little`/`le` or
 `big`/`be`.  For 4-bit streams, `vavi.sound.mobile.FuetrekAudioEngine.decoder`
 accepts `g721`, `yamaha`, `ma`, `dvi`, `oki`, `rohm`, and `vox`.
 
-The MFi header does not identify the codec beyond the sample bit depth.  With
-`g723Decoder.*=auto`, different streams may therefore be assigned different
-codecs by the roughness heuristic, and a file can still play incorrectly.
-Use explicit per-stream values when reproducing a known handset/resource.
+The MFi header does not identify the codec beyond the sample bit depth.  The
+default is the format-defined G.723 decoder.  An experimental `auto` profile
+is available for legacy resources that need statistical G.721 fallback, but
+it must be enabled explicitly; use explicit per-stream values when reproducing
+a known handset/resource.
 
 #### Faith RTPlayer Type 4 playback (Windows)
 
