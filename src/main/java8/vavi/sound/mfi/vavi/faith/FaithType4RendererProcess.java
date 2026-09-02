@@ -5,6 +5,7 @@
 package vavi.sound.mfi.vavi.faith;
 
 import java.io.BufferedReader;
+import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -29,8 +30,11 @@ public final class FaithType4RendererProcess {
 
     private static final int SAMPLE_RATE = 44_100;
     private static final int FRAMES_PER_BLOCK = 128;
+    private static final int CHANNELS = 2;
+    private static final int NATIVE_SAMPLE_BYTES = Integer.BYTES;
+    private static final int NATIVE_BLOCK_BYTES = FRAMES_PER_BLOCK * CHANNELS * NATIVE_SAMPLE_BYTES;
+    private static final int PCM_BLOCK_BYTES = FRAMES_PER_BLOCK * CHANNELS * Short.BYTES;
     private static final int TAIL_MILLISECONDS = 1_500;
-    private static final double OUTPUT_GAIN = 3.0;
 
     private FaithType4RendererProcess() {
     }
@@ -76,48 +80,57 @@ public final class FaithType4RendererProcess {
     private static void writeWave(List<Event> events, File output, Pointer api, int slot,
                                   Function renderBlock, Function sendEvents) throws Exception {
         long finalFrame = events.get(events.size() - 1).frame + (long) TAIL_MILLISECONDS * SAMPLE_RATE / 1_000;
-        Memory block = new Memory(FRAMES_PER_BLOCK * 2L * Integer.BYTES);
-        FileOutputStream stream = new FileOutputStream(output);
-        try {
+        Memory block = new Memory(NATIVE_BLOCK_BYTES);
+        byte[] nativeSamples = new byte[NATIVE_BLOCK_BYTES];
+        byte[] pcmSamples = new byte[PCM_BLOCK_BYTES];
+        Memory eventData = new Memory(4);
+        Object[] renderArguments = new Object[] { api, block };
+        Object[] sendArguments = new Object[] { api, slot, eventData, 1 };
+        try (BufferedOutputStream stream = new BufferedOutputStream(new FileOutputStream(output), 64 * 1024)) {
             writeWaveHeader(stream);
             long renderedFrames = 0;
             int eventIndex = 0;
             while (renderedFrames < finalFrame) {
                 while (eventIndex < events.size() && events.get(eventIndex).frame <= renderedFrames) {
-                    send(sendEvents, api, slot, events.get(eventIndex++));
+                    send(sendEvents, eventData, sendArguments, events.get(eventIndex++));
                 }
                 block.clear();
-                int result = renderBlock.invokeInt(new Object[] { api, block });
+                int result = renderBlock.invokeInt(renderArguments);
                 if (result != 0) throw new IllegalStateException("RenderBlock returned " + result);
+                block.read(0, nativeSamples, 0, NATIVE_BLOCK_BYTES);
+                int pcmOffset = 0;
                 for (int i = 0; i < FRAMES_PER_BLOCK; i++) {
-                    writeLe16(stream, toPcm16(block.getInt(i * 8L)));
-                    writeLe16(stream, toPcm16(block.getInt(i * 8L + 4)));
+                    int nativeOffset = i * CHANNELS * NATIVE_SAMPLE_BYTES;
+                    writeLe16(pcmSamples, pcmOffset, toPcm16(readLe32(nativeSamples, nativeOffset)));
+                    pcmOffset += Short.BYTES;
+                    writeLe16(pcmSamples, pcmOffset, toPcm16(readLe32(nativeSamples, nativeOffset + NATIVE_SAMPLE_BYTES)));
+                    pcmOffset += Short.BYTES;
                 }
+                stream.write(pcmSamples, 0, pcmOffset);
                 renderedFrames += FRAMES_PER_BLOCK;
             }
-            stream.close();
+            stream.flush();
             patchWaveSizes(output, renderedFrames * 4);
             System.out.println("Faith Type4: events=" + events.size() + " frames=" + renderedFrames + " output=" + output);
-        } finally {
-            try { stream.close(); } catch (Exception ignored) { }
         }
     }
 
-    private static void send(Function function, Pointer api, int slot, Event event) {
-        Memory data = new Memory(4);
+    private static void send(Function function, Memory data, Object[] arguments, Event event) {
         data.setByte(0, (byte) event.status);
         data.setByte(1, (byte) event.data1);
         data.setByte(2, (byte) event.data2);
         data.setByte(3, (byte) 0);
-        int result = function.invokeInt(new Object[] { api, slot, data, 1 });
+        int result = function.invokeInt(arguments);
         if (result != 0) throw new IllegalStateException("SendEvents returned " + result);
     }
 
     private static short toPcm16(int value) {
-        double scaled = value * OUTPUT_GAIN;
+        // OUTPUT_GAIN is a fixed 3.0, so integer arithmetic is exact here and
+        // avoids a floating-point multiply and Math.round for every sample.
+        long scaled = (long) value * 3L;
         if (scaled > Short.MAX_VALUE) return Short.MAX_VALUE;
         if (scaled < Short.MIN_VALUE) return Short.MIN_VALUE;
-        return (short) Math.round(scaled);
+        return (short) scaled;
     }
 
     private static List<Event> readEvents(File file) throws Exception {
@@ -143,7 +156,7 @@ public final class FaithType4RendererProcess {
         return result;
     }
 
-    private static void writeWaveHeader(FileOutputStream output) throws Exception {
+    private static void writeWaveHeader(java.io.OutputStream output) throws Exception {
         output.write(new byte[] { 'R', 'I', 'F', 'F' }); writeLe32(output, 0);
         output.write(new byte[] { 'W', 'A', 'V', 'E', 'f', 'm', 't', ' ' });
         writeLe32(output, 16); writeLe16(output, 1); writeLe16(output, 2);
@@ -163,8 +176,20 @@ public final class FaithType4RendererProcess {
         }
     }
 
+    private static void writeLe16(byte[] output, int offset, int value) {
+        output[offset] = (byte) value;
+        output[offset + 1] = (byte) (value >>> 8);
+    }
+
     private static void writeLe16(java.io.OutputStream output, int value) throws Exception {
         output.write(value & 0xff); output.write((value >>> 8) & 0xff);
+    }
+
+    private static int readLe32(byte[] input, int offset) {
+        return (input[offset] & 0xff) |
+               ((input[offset + 1] & 0xff) << 8) |
+               ((input[offset + 2] & 0xff) << 16) |
+               (input[offset + 3] << 24);
     }
 
     private static void writeLe32(java.io.OutputStream output, int value) throws Exception {
