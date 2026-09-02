@@ -45,6 +45,42 @@ includes many ADPCM codecs and the [SSRC](https://github.com/shibatch/SSRC) samp
 
 - `vavi.sound.sampled.spi.ssrc` ... ssrc sampling rate conversion provider on/off, default `false`
 
+#### MFi Type-2 ADPCM codec selection
+
+For MFi Type-2 (`format=0x81`) ADPCM tracks, the codec can be selected per
+audio-data number by appending the stream number to the JVM property name:
+
+```text
+-Dvavi.sound.mobile.FuetrekAudioEngine.g723Decoder.5=g723
+```
+
+The 2-bit selector `g723Decoder.*` accepts `auto`, `g723`, `g721`, `ima2`, and
+`ima` (`ima` is an alias for `ima2`).  The G.723 bit packing can be selected
+with `vavi.sound.mobile.FuetrekAudioEngine.g723BitOrder.*` as `little`/`le` or
+`big`/`be`.  For 4-bit streams, `vavi.sound.mobile.FuetrekAudioEngine.decoder`
+accepts `g721`, `yamaha`, `ma`, `dvi`, `oki`, `rohm`, and `vox`.
+
+The MFi header does not identify the codec beyond the sample bit depth.  With
+`g723Decoder.*=auto`, different streams may therefore be assigned different
+codecs by the roughness heuristic, and a file can still play incorrectly.
+Use explicit per-stream values when reproducing a known handset/resource.
+
+#### Faith RTPlayer Type 4 playback (Windows)
+
+Specify `-Dfaith4dll` to play an MLD through RTPlayer's Type 4 sound source,
+which was widely used in NTT DoCoMo mobile phones. When the property is given
+without a value, the standard installation is used:
+
+```text
+C:\Program Files (x86)\Faith\Ring Tone Authoring Tool\Tools\rt_synth_4.dll
+```
+
+The DLL is called natively from a 32-bit JVM helper. The sound source is not
+included in this source code for license-compliance reasons; Faith's authoring
+tool must be appropriately installed on the system before using this option.
+An alternate Type 4-compatible DLL can be supplied as
+`-Dfaith4dll=C:\path\to\rt_synth_4.dll`.
+
 ### sample
 
  * MFi (.mld) ... [PlayMFi](src/test/java/PlayMFi.java)

@@ -14,6 +14,9 @@ import java.io.OutputStream;
 import java.lang.System.Logger;
 import java.lang.System.Logger.Level;
 import java.nio.ByteOrder;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicLong;
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.DataLine;
@@ -40,6 +43,12 @@ public abstract class BasicAudioEngine implements AudioEngine {
     /** */
     protected Data[] data;
 
+    /** Lines currently playing, indexed by MFi stream number. */
+    private final ConcurrentMap<Integer, SourceDataLine> activeLines = new ConcurrentHashMap<>();
+
+    /** Generation of the most recent play/stop command for each stream. */
+    private final ConcurrentMap<Integer, AtomicLong> generations = new ConcurrentHashMap<>();
+
     @Override
     public void setData(int streamNumber,
                         int channel,
@@ -64,18 +73,33 @@ public abstract class BasicAudioEngine implements AudioEngine {
             datum.adpcm = temp;
         } else {
             datum.adpcm = adpcm;
-            init(sampleRate, channels);
         }
         datum.continued = continued;
         this.data[streamNumber] = datum;
-logger.log(Level.INFO, "audio no: " + streamNumber + " stored");
+        String decoder = getDecoderName(streamNumber, bits, datum.adpcm);
+logger.log(Level.INFO, "audio no: " + streamNumber + " stored" +
+           (decoder == null || decoder.isBlank() ? "" : ", decoder: " + decoder));
 //debug1();
+    }
+
+    /**
+     * Returns a diagnostic decoder name for a stored stream.  Engines that do
+     * not have selectable codecs may leave this {@code null}.
+     */
+    protected String getDecoderName(int streamNumber, int bits, byte[] adpcm) {
+        return null;
     }
 
     @Override
     public void stop(int streamNumber) {
-        line.drain();
-        line.stop();
+        generations.computeIfAbsent(streamNumber, ignored -> new AtomicLong()).incrementAndGet();
+        SourceDataLine playbackLine = activeLines.remove(streamNumber);
+        if (playbackLine != null) {
+            // Do not drain here: an MFi stop event must cut off only this stream
+            // immediately, without waiting for its buffered tail.
+            playbackLine.stop();
+            playbackLine.close();
+        }
     }
 
     /** */
@@ -83,9 +107,6 @@ logger.log(Level.INFO, "audio no: " + streamNumber + " stored");
 
     /** */
     protected abstract InputStream[] getInputStreams(int streamNumber, int channels);
-
-    /** audio line */
-    protected SourceDataLine line;
 
     /** audio line format */
     protected AudioFormat getAudioFormat(int sampleRate, int channels) {
@@ -99,8 +120,8 @@ logger.log(Level.INFO, "audio no: " + streamNumber + " stored");
                 false);
     }
 
-    /** init audio line */
-    protected void init(int sampleRate, int channels) {
+    /** Opens a dedicated audio line for one ADPCM stream. */
+    protected SourceDataLine createLine(int sampleRate, int channels) {
         try {
             AudioFormat audioFormat = getAudioFormat(sampleRate, channels);
 logger.log(Level.DEBUG, audioFormat);
@@ -119,11 +140,14 @@ logger.log(Level.WARNING, "mixer: " + mixerName + ": " + e);
                 newLine = (SourceDataLine) AudioSystem.getLine(info);
             }
             // explicit buffer keeps this line's latency small and predictable
-            int bufferMillis = Integer.getInteger("vavi.sound.mobile.AudioEngine.bufferSize", 100);
+            // Keep the line's startup latency below one MIDI tick.  The old
+            // 100 ms default was large enough to make short percussion sound
+            // late even when its scheduling event was on time.
+            int bufferMillis = Integer.getInteger("vavi.sound.mobile.AudioEngine.bufferSize", 10);
             int bufferBytes = (int) (bufferMillis * audioFormat.getSampleRate() / 1000) * audioFormat.getFrameSize();
             newLine.open(audioFormat, bufferBytes);
             newLine.start();
-            this.line = newLine;
+            return newLine;
         } catch (LineUnavailableException e) {
             throw new IllegalStateException(e);
         }
@@ -147,28 +171,48 @@ logger.log(Level.INFO, "always used: no: " + streamNumber + ", ch: " + this.data
             return;
         }
 
+        AtomicLong generationCounter = generations.computeIfAbsent(streamNumber, ignored -> new AtomicLong());
+        long generation = generationCounter.incrementAndGet();
+        SourceDataLine playbackLine = null;
         try {
+            // Every MFi stream owns a line while it is playing.  A number of
+            // handset arrangements (for example Morgenstimmung's bird calls)
+            // repeatedly overlap a short stream with longer ADPCM streams.
+            // Reusing one line serializes those sounds and drops the overlap.
+            playbackLine = createLine(this.data[streamNumber].sampleRate, channels);
+            SourceDataLine previous = activeLines.put(streamNumber, playbackLine);
+            if (previous != null) {
+                previous.stop();
+                previous.close();
+            }
+            // A stop or a newer play may have arrived while the line was
+            // opening.  Do not let this stale task emit any samples.
+            if (generationCounter.get() != generation) {
+                return;
+            }
 //logger.log(Level.TRACE, data.length);
             InputStream[] iss = getInputStreams(streamNumber, channels);
 //logger.log(Level.TRACE, "iss: " + iss[0].available());
 
-            double volume = Double.parseDouble(System.getProperty("vavi.sound.mobile.AudioEngine.volume",  "0.2"));
-            volume(line, volume);
+            double volume = Double.parseDouble(System.getProperty("vavi.sound.mobile.AudioEngine.volume",  "0.4"));
+            volume(playbackLine, volume);
 
             // gate time as an exact number of frames instead of wall clock polling
-            AudioFormat format = line.getFormat();
+            AudioFormat format = playbackLine.getFormat();
             long gateFrames = gateTime > 0 ? Math.round(gateTime * format.getSampleRate() / 1000.0) : Long.MAX_VALUE;
 logger.log(Level.DEBUG, "start: no: " + streamNumber + ", gateFrames: " + (gateFrames == Long.MAX_VALUE ? "all" : gateFrames) + ", at: " + System.nanoTime() + " ns");
 
             byte[] buf = new byte[1024];
             long framesWritten = 0;
-            while (iss[0].available() > 0 && framesWritten < gateFrames) {
+            while (generationCounter.get() == generation &&
+                   activeLines.get(streamNumber) == playbackLine &&
+                   iss[0].available() > 0 && framesWritten < gateFrames) {
                 if (channels == 1) {
                     int frameSize = format.getFrameSize();
                     long budget = Math.min(1024 / frameSize, gateFrames - framesWritten) * frameSize;
                     int l = iss[0].read(buf, 0, (int) budget);
 logger.log(Level.TRACE, getClass().getSimpleName() + ": data:\n" + StringUtil.getDump(buf, 32));
-                    line.write(buf, 0, l);
+                    playbackLine.write(buf, 0, l);
                     framesWritten += l / frameSize;
                 } else {
                     int lL = iss[0].read(buf, 0, 512);
@@ -180,21 +224,29 @@ logger.log(Level.TRACE, getClass().getSimpleName() + ": data:\n" + StringUtil.ge
                         temp[1] = buf[i * 2 + 1];
                         temp[2] = buf[512 + i * 2];
                         temp[3] = buf[512 + i * 2 + 1];
-                        line.write(temp, 0, 4);
+                        playbackLine.write(temp, 0, 4);
                         framesWritten++;
                     }
                 }
             }
         } catch (IOException e) {
             throw new IllegalStateException(e);
+        } finally {
+            if (playbackLine != null && activeLines.remove(streamNumber, playbackLine)) {
+                playbackLine.drain();
+                playbackLine.stop();
+                playbackLine.close();
+            }
         }
     }
 
     @Override
     public void close() {
-        if (line != null) {
-            line.close();
-        }
+        activeLines.values().forEach(playbackLine -> {
+            playbackLine.stop();
+            playbackLine.close();
+        });
+        activeLines.clear();
     }
 
     // ----

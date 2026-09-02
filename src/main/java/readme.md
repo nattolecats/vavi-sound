@@ -56,6 +56,45 @@ It will be possible to play it.
 
 ## How to
 
+### Faith Type4 DLL playback (Windows)
+
+The test-inclusive command-line JAR can render an MLD through the original
+32-bit Faith Type4 synthesizer. Specify the DLL with the same JVM-property
+style used for `-Dsf2`:
+
+```powershell
+$env:JAVA_HOME="C:\Program Files\Java\jdk-25.0.4.1"
+$env:Path="$env:JAVA_HOME\bin;$env:Path"
+java -Dfaith4dll `
+  -Dfaithjava="C:\Program Files (x86)\Java\jdk1.8.0_152\bin\java.exe" `
+  -jar .\target\vavi-sound-1.0.28-jar-with-dependencies-and-tests.jar `
+  "C:\mld\WALKURENRITT (DIE WALKURE).mld"
+```
+
+`-Dfaith4dll` enables playback with RTPlayer's Type 4 sound source, a sound
+source widely used by NTT DoCoMo mobile phones. With no value, the renderer
+uses `C:\Program Files (x86)\Faith\Ring Tone Authoring Tool\Tools\rt_synth_4.dll`.
+The Type4 DLL is called natively with JNA in a 32-bit JVM child process and
+the resulting 44.1 kHz WAV is played by the main JVM. This avoids loading a
+32-bit DLL into a 64-bit JVM and has no PowerShell dependency. Set
+`-Dfaithjava` to an x86 Java executable (Java 8 or newer), or set
+`JAVA_HOME_X86`; common installations under `Program Files (x86)` are also
+discovered automatically. `-Dvavi.sound.test.playMillis=5000` limits both the
+rendered sequence and the audition to five seconds. MFi `adat` ADPCM is
+started concurrently through the regular MFi audio engine. An alternate
+Type 4-compatible DLL may be selected by assigning its path to
+`-Dfaith4dll`. For license compliance, the sound source is not distributed
+with this project; Faith's authoring tool must be installed separately before
+using this option.
+
+MFi Type-2's 2-bit header does not identify the codec.  The default `auto`
+profile compares the IMA2-compatible path with G.723/G.721 candidates; for
+diagnostics, `-Dvavi.sound.mobile.FuetrekAudioEngine.g723Decoder=ima2` or
+`g723` forces one decoder globally.  A stream-specific override can be used
+to isolate mixed resources, for example
+`-Dvavi.sound.mobile.FuetrekAudioEngine.g723Decoder.3=ima2` and
+`-Dvavi.sound.mobile.FuetrekAudioEngine.g723Decoder.4=g723`.
+
 ### 1. Create MIDI from MFi
 
 ```java

@@ -117,18 +117,19 @@ public interface AudioEngine {
 
         /** @return delay [ms] to apply to adpcm playback */
         public static long getDelay() {
-            long lineLatency = Long.getLong("vavi.sound.mobile.AudioEngine.latency", 0);
+            long lineLatency = Long.getLong("vavi.sound.mobile.AudioEngine.latency", -180);
             return Math.max(0, synthesizerLatencyMillis - lineLatency);
         }
 
         /**
-         * Shared by all adpcm play/stop events. single-threaded on purpose: events of
-         * one sequence write to one {@link javax.sound.sampled.SourceDataLine}, so this
-         * both applies the latency-compensation delay and serializes the line access,
-         * keeping event order (fifo for equal delays).
+         * Shared by all adpcm play/stop events. Each stream has its own
+         * {@link javax.sound.sampled.SourceDataLine}. MFi percussion uses many
+         * short, overlapping start/stop events, so leave enough workers for the
+         * normal four voices plus overlaps; the pool remains configurable.
          */
         private static final ScheduledThreadPoolExecutor scheduler =
-                new ScheduledThreadPoolExecutor(1, r -> {
+                new ScheduledThreadPoolExecutor(
+                        Integer.getInteger("vavi.sound.mobile.AudioEngine.workers", 16), r -> {
                     Thread thread = new Thread(r, "ADPCM Player");
                     thread.setDaemon(true);
                     return thread;

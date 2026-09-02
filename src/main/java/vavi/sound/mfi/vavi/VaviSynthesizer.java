@@ -15,6 +15,7 @@ import javax.sound.midi.MidiDeviceReceiver;
 import javax.sound.midi.MidiMessage;
 import javax.sound.midi.MidiUnavailableException;
 import javax.sound.midi.Receiver;
+import javax.sound.midi.ShortMessage;
 import javax.sound.midi.Soundbank;
 import javax.sound.midi.SysexMessage;
 
@@ -27,6 +28,7 @@ import vavi.sound.mfi.vavi.sequencer.MachineDependentSequencer;
 import vavi.sound.mfi.vavi.sequencer.MfiMessageStore;
 import vavi.sound.mfi.vavi.sequencer.UnknownVendorSequencer;
 import vavi.sound.mfi.vavi.track.MachineDependentMessage;
+import vavi.sound.mfi.vavi.ucs.UcsAudioEngine;
 import vavi.sound.midi.MidiUtil;
 import vavi.sound.midi.VaviMidiDeviceProvider;
 import vavi.sound.mobile.AudioEngine;
@@ -91,14 +93,32 @@ public class VaviSynthesizer implements Synthesizer {
     public static class VaviReceiver implements MidiDeviceReceiver {
         boolean isOpen;
 
+        /**
+         * UCS wave assignment has not yet been recovered for every terminal
+         * family.  Keep the experimental software renderer opt-in so an
+         * incorrect assignment cannot replace otherwise usable MIDI voices.
+         */
+        private static final boolean renderUcs = Boolean.getBoolean("vavi.sound.mfi.ucs.render");
+
         /** */
         private final javax.sound.midi.Synthesizer midiSynthesizer;
+
+        /** DoCoMo UCS uses its own embedded PCM bank. */
+        private final UcsAudioEngine ucsAudioEngine = new UcsAudioEngine();
 
         public VaviReceiver(javax.sound.midi.Synthesizer midiSynthesizer) {
             this.midiSynthesizer = midiSynthesizer;
             try {
-                AudioEngine.Sync.setSynthesizerLatency(midiSynthesizer.getLatency() / 1000);
-logger.log(Level.DEBUG, "synthesizer latency: " + midiSynthesizer.getLatency() / 1000 + " ms");
+                long reportedLatency = midiSynthesizer.getLatency() / 1000;
+                // Gervill's reported latency includes a sizeable output
+                // buffer.  ADPCM is written directly to a SourceDataLine and
+                // does not need the full value; compensating it in full made
+                // short MFi percussion audibly late.  Keep the lead tunable
+                // for sound cards with a different hardware path.
+                long lead = Long.getLong("vavi.sound.mobile.AudioEngine.syncLead", 120);
+                long effectiveLatency = Math.max(0, reportedLatency - lead);
+                AudioEngine.Sync.setSynthesizerLatency(effectiveLatency);
+logger.log(Level.DEBUG, "synthesizer latency: reported=" + reportedLatency + " ms, effective=" + effectiveLatency + " ms");
             } catch (Exception e) {
 logger.log(Level.DEBUG, "getting synthesizer latency: " + e);
             }
@@ -121,6 +141,15 @@ logger.log(Level.DEBUG, "getting synthesizer latency: " + e);
  throw e;
 }
             }
+            if (renderUcs && message instanceof ShortMessage shortMessage && ucsAudioEngine.isUcsChannel(shortMessage.getChannel())) {
+                if (shortMessage.getCommand() == ShortMessage.NOTE_ON) {
+                    ucsAudioEngine.noteOn(shortMessage.getChannel(), shortMessage.getData1(), shortMessage.getData2());
+                    return;
+                } else if (shortMessage.getCommand() == ShortMessage.NOTE_OFF) {
+                    ucsAudioEngine.noteOff(shortMessage.getChannel(), shortMessage.getData1());
+                    return;
+                }
+            }
             // TODO MetaMessage 0x2f closing engine
             try {
                 midiSynthesizer.getReceiver().send(message, timeStamp);
@@ -132,6 +161,7 @@ logger.log(Level.DEBUG, "getting synthesizer latency: " + e);
         @Override
         public void close() {
             isOpen = false;
+            ucsAudioEngine.close();
         }
 
         @Override
@@ -199,9 +229,12 @@ logger.log(Level.DEBUG, "getting synthesizer latency: " + e);
         private static void processSpecial_Vavi_MachineDependent(javax.sound.midi.SysexMessage message) throws InvalidMfiDataException {
 
             byte[] data = message.getData();
-            int id = (data[2] & 0xff) * 0xff + (data[3] & 0xff);
+            int id = (data[2] & 0xff) * 0x100 + (data[3] & 0xff);
 //logger.log(Level.TRACE, "message id: " + id);
-            MachineDependentMessage mdm = (MachineDependentMessage) MfiMessageStore.get(id);
+            if (!(MfiMessageStore.get(id) instanceof MachineDependentMessage mdm)) {
+                logger.log(Level.WARNING, "machine-dependent sysex refers to no machine-dependent message: " + id);
+                return;
+            }
 
             int vendor = mdm.getVendor() | mdm.getCarrier();
             MachineDependentSequencer sequencer;
@@ -225,9 +258,12 @@ logger.log(Level.DEBUG, "getting synthesizer latency: " + e);
         private static void processSpecial_Vavi_Mfi4(javax.sound.midi.SysexMessage message) throws InvalidMfiDataException {
 
             byte[] data = message.getData();
-            int id = (data[2] & 0xff) * 0xff + (data[3] & 0xff);
+            int id = (data[2] & 0xff) * 0x100 + (data[3] & 0xff);
 //logger.log(Level.TRACE, "message id: " + id);
-            AudioDataSequencer sequencer = (AudioDataSequencer) MfiMessageStore.get(id);
+            if (!(MfiMessageStore.get(id) instanceof AudioDataSequencer sequencer)) {
+                logger.log(Level.WARNING, "MFi4 sysex refers to no audio message: " + id);
+                return;
+            }
 logger.log(Level.DEBUG, "audio sysex received: id: " + id + ", at: " + System.nanoTime() + " ns");
             sequencer.sequence();
         }

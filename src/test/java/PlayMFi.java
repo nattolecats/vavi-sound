@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import javax.sound.midi.MidiSystem;
 import javax.sound.midi.Receiver;
 import javax.sound.midi.Soundbank;
@@ -20,6 +21,7 @@ import vavi.sound.mfi.MfiSystem;
 import vavi.sound.mfi.Sequence;
 import vavi.sound.mfi.Sequencer;
 import vavi.sound.mfi.Synthesizer;
+import vavi.sound.mfi.vavi.faith.FaithType4Renderer;
 import vavi.util.Debug;
 import vavi.util.properties.annotation.Property;
 import vavi.util.properties.annotation.PropsEntity;
@@ -47,10 +49,18 @@ public class PlayMFi {
     }
 
     @Property(name = "vavi.test.volume.midi")
-    float volume = 0.2f;
+    // A file can omit the optional MFi master-volume message.  The command
+    // line player must therefore start at unity gain; otherwise such files
+    // remain permanently attenuated while files that do set master volume
+    // appear normal.
+    float volume = 1.0f;
 
     @Property(name = "sf2")
     String sf2 = System.getProperty("user.home") + "/Library/Audio/Sounds/Banks/Orchestra/default.sf2";
+
+    /** Faith Type4 renderer DLL (Windows); an empty value uses Faith's default path. */
+    @Property(name = "faith4dll")
+    String faith4dll = System.getProperty("faith4dll", "");
 
     @Property
     String mfi = "src/test/resources/test.mfi";
@@ -115,7 +125,13 @@ Debug.println("META: " + meta.getType());
         sequencer.setSequence(sequence);
         sequencer.addMetaEventListener(mel);
         sequencer.start();
-        cdl.await();
+        long playMillis = Long.getLong("vavi.sound.test.playMillis", 0);
+        if (playMillis > 0) {
+            cdl.await(playMillis, TimeUnit.MILLISECONDS);
+            sequencer.stop();
+        } else {
+            cdl.await();
+        }
 Debug.println("END: " + mfi);
         sequencer.removeMetaEventListener(mel);
     }
@@ -124,6 +140,17 @@ Debug.println("END: " + mfi);
      * @param args mfi files ...
      */
     public static void main(String[] args) throws Exception {
+        // -Dfaith4dll enables Faith Type 4. An empty value selects the
+        // standard RTPlayer installation path; a non-empty value overrides it.
+        String faith4DllProperty = System.getProperty("faith4dll");
+        if (faith4DllProperty != null) {
+            Path dll = faith4DllProperty.isBlank() ? FaithType4Renderer.defaultDll() : Path.of(faith4DllProperty);
+            long playMillis = Long.getLong("vavi.sound.test.playMillis", 0);
+            for (String arg : args) {
+                FaithType4Renderer.renderAndPlay(Path.of(arg), dll, playMillis);
+            }
+            return;
+        }
         PlayMFi app = new PlayMFi();
         app.setup();
         for (String arg : args) {

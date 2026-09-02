@@ -70,6 +70,8 @@ class BasicAudioEngineGateTimeTest {
             data = new Data[4];
             this.line = line;
         }
+        private final FakeLine line;
+        @Override protected SourceDataLine createLine(int sampleRate, int channels) { return line; }
         @Override public boolean accept(int format) { return true; }
         @Override protected int getChannels(int streamNumber) { return data[streamNumber].channels; }
         @Override protected InputStream[] getInputStreams(int streamNumber, int channels) {

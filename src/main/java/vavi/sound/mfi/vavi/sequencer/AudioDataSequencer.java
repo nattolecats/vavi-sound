@@ -33,14 +33,21 @@ public interface AudioDataSequencer {
     class Factory {
 
         /** */
-        private static final ThreadLocal<AudioEngine> audioEngineStore = new ThreadLocal<>();
+        /**
+         * Engine selected by the most recently received audio-data chunk.
+         *
+         * <p>MFi data loading and play control may be dispatched on different
+         * sequencer threads, so a ThreadLocal loses the selected engine just
+         * before {@code AudioPlayMessage} needs it.</p>
+         */
+        private static volatile AudioEngine audioEngineStore;
 
         /**
          * Second time or later.
          * @return nullable
          */
         public static AudioEngine getAudioEngine() {
-            return audioEngineStore.get();
+            return audioEngineStore;
         }
 
         private static final Set<AudioEngine> engines = new HashSet<>();
@@ -53,7 +60,7 @@ public interface AudioDataSequencer {
         public static AudioEngine getAudioEngine(int format) {
             for (AudioEngine engine : engines) {
                 if (engine.accept(format)) {
-                    audioEngineStore.set(engine);
+                    audioEngineStore = engine;
                     return engine;
                 }
             }

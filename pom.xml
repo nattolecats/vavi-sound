@@ -139,6 +139,23 @@
         <configuration>
           <release>25</release>
         </configuration>
+        <executions>
+          <execution>
+            <id>compile-faith-x86-renderer</id>
+            <phase>compile</phase>
+            <goals>
+              <goal>compile</goal>
+            </goals>
+            <configuration>
+              <!-- The Faith DLL is 32-bit and commonly has to run on a Java 8
+                   x86 runtime. Keep its isolated helper bytecode compatible. -->
+              <release>8</release>
+              <compileSourceRoots>
+                <compileSourceRoot>${project.basedir}/src/main/java8</compileSourceRoot>
+              </compileSourceRoots>
+            </configuration>
+          </execution>
+        </executions>
       </plugin>
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
@@ -215,6 +232,11 @@
   </dependencyManagement>
 
   <dependencies>
+    <dependency>
+      <groupId>net.java.dev.jna</groupId>
+      <artifactId>jna</artifactId>
+      <version>5.19.1</version>
+    </dependency>
     <dependency>
       <groupId>com.github.umjammer</groupId> <!-- vavi / com.github.umjammer -->
       <artifactId>vavi-commons</artifactId>

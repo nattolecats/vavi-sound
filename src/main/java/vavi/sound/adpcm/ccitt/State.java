@@ -72,37 +72,37 @@ class State {
     /** Locked or steady state step size multiplier. */
     private long yl;
     /** Unlocked or non-steady state step size multiplier. */
-    private int yu;
+    private short yu;
     /** Short term energy estimate. */
-    private int dms;
+    private short dms;
     /** Long term energy estimate. */
-    private int dml;
+    private short dml;
     /** Linear weighting coefficient of 'yl' and 'yu'. */
-    private int ap;
+    private short ap;
 
     /** Coefficients of pole portion of prediction filter. */
-    private final int[] a = new int[2];
+    private final short[] a = new short[2];
     /** Coefficients of zero portion of prediction filter. */
-    private final int[] b = new int[6];
+    private final short[] b = new short[6];
     /**
      * Signs of previous two samples of a partially
      * reconstructed signal.
      */
-    private final int[] pk = new int[2];
+    private final short[] pk = new short[2];
     /**
      * Previous 6 samples of the quantized difference
      * signal represented in an internal floating point
      * format.
      */
-    private final int[] dq = new int[6];
+    private final short[] dq = new short[6];
     /**
      * Previous 2 samples of the quantized difference
      * signal represented in an internal floating point
      * format.
      */
-    private final int[] sr = new int[2];
+    private final short[] sr = new short[2];
     /** delayed tone detect, new in 1988 version */
-    private int td;
+    private short td;
 
     // ----
 
@@ -244,7 +244,7 @@ class State {
 
         // FUNCTW & FILTD & DELAY
         // update non-steady state step size multiplier
-        yu = y + ((wi - y) >> 5);
+        yu = (short) (y + ((wi - y) >> 5));
 
         // LIMB
         if (yu < 544) { // 544 <= yu <= 5120
@@ -302,7 +302,7 @@ class State {
             }
 
             // TRIGB & DELAY
-            a[1] = a2p;
+            a[1] = (short) a2p;
 
             // UPA1
             // update predictor pole a[0]
@@ -318,9 +318,9 @@ class State {
             // LIMD
             int a1ul = 15360 - a2p;         // UPA1
             if (a[0] < -a1ul) {
-                a[0] = -a1ul;
+                a[0] = (short) -a1ul;
             } else if (a[0] > a1ul) {
-                a[0] = a1ul;
+                a[0] = (short) a1ul;
             }
 
             // UPB : update predictor zeros b[6]
@@ -345,13 +345,13 @@ class State {
         }
         // FLOAT A : convert dq[0] to 4-bit exp, 6-bit mantissa f.p.
         if (mag == 0) {
-            dq[0] = (_dq >= 0) ? 0x20 : -992;
+            dq[0] = (short) ((_dq >= 0) ? 0x20 : -992);
 //logger.log(Level.TRACE, "dq[0]:1: " + dq[0]);
         } else {
             exp = quan(mag);
-            dq[0] = (_dq >= 0) ?
+            dq[0] = (short) ((_dq >= 0) ?
                 (exp << 6) + ((mag << 6) >> exp) :
-                (exp << 6) + ((mag << 6) >> exp) - 0x400;
+                (exp << 6) + ((mag << 6) >> exp) - 0x400);
 //logger.log(Level.TRACE, "dq[0]:2: " + dq[0] + ", " + _dq + ", " + exp + ", " + mag);
 //logger.log(Level.TRACE, "dq[0]:-: " + (exp << 6) + ", " + ((mag << 6) >> exp));
         }
@@ -363,12 +363,12 @@ class State {
 //logger.log(Level.TRACE, "sr[0]:1: " + sr[0]);
         } else if (_sr > 0) {
             exp = quan(_sr);
-            sr[0] = (exp << 6) + ((_sr << 6) >> exp);
+            sr[0] = (short) ((exp << 6) + ((_sr << 6) >> exp));
 //logger.log(Level.TRACE, "sr[0]:2: " + sr[0]);
         } else if (_sr > -32768) {
             mag = -_sr;
             exp = quan(mag);
-            sr[0] = (exp << 6) + ((mag << 6) >> exp) - 0x400;
+            sr[0] = (short) ((exp << 6) + ((mag << 6) >> exp) - 0x400);
 //logger.log(Level.TRACE, "sr[0]:3: " + sr[0]);
         } else {
             sr[0] = -992;
@@ -377,7 +377,7 @@ class State {
 
         // DELAY A
         pk[1] = pk[0];
-        pk[0] = pk0;
+        pk[0] = (short) pk0;
 
         // TONE
         if (tr == 1) {              // this sample has been treated as data
